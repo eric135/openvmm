@@ -16,6 +16,7 @@ use nvme_spec::nvm;
 use nvme_spec::Status;
 use pal::unix::affinity::get_cpu_number;
 use std::io;
+use tracing::Instrument;
 
 #[derive(Debug, Inspect)]
 pub struct NvmeDisk {
@@ -92,6 +93,7 @@ impl DiskIo for NvmeDisk {
                         (this_block_count as usize) << self.block_shift,
                     ),
                 )
+                .instrument(tracing::trace_span!("read_vectored",))
                 .await
                 .map_err(map_nvme_error)?;
 

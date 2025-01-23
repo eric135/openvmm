@@ -92,7 +92,7 @@ impl AsyncScsiDisk for SimpleScsiDvd {
                 ScsiOp::TEST_UNIT_READY => self.handle_test_unit_ready_iso(),
                 ScsiOp::READ | ScsiOp::READ12 | ScsiOp::READ16 => {
                     self.handle_data_cdb_async_iso(external_data, request, sector_count)
-                        .instrument(tracing::info_span!("handle_data_cdb_async", ?op,))
+                        .instrument(tracing::trace_span!("handle_data_cdb_async", ?op,))
                         .await
                 }
                 ScsiOp::GET_EVENT_STATUS => self.handle_get_event_status(external_data, request),

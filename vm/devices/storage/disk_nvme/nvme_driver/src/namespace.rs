@@ -22,6 +22,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use thiserror::Error;
+use tracing::Instrument;
 use vmcore::vm_task::VmTaskDriver;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
@@ -254,6 +255,7 @@ impl Namespace {
                 guest_memory,
                 mem.subrange(0, len),
             )
+            .instrument(tracing::trace_span!("issue_external",))
             .await?;
         Ok(())
     }
