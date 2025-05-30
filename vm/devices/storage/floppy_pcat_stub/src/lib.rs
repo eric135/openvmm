@@ -17,7 +17,6 @@ use chipset_device::pio::ControlPortIoIntercept;
 use chipset_device::pio::PortIoIntercept;
 use chipset_device::pio::RegisterPortIoIntercept;
 use chipset_device::poll_device::PollDevice;
-use cvm_tracing::CVM_CONFIDENTIAL;
 use inspect::Inspect;
 use inspect::InspectMut;
 use open_enum::open_enum;
@@ -204,7 +203,7 @@ impl PortIoIntercept for StubFloppyDiskController {
             }
         };
 
-        tracing::trace!(CVM_CONFIDENTIAL, ?io_port, ?offset, ?data, "io port read");
+        tracing::trace!(?io_port, ?offset, ?data, "io port read");
         io_result
     }
 
@@ -215,7 +214,7 @@ impl PortIoIntercept for StubFloppyDiskController {
 
         let data = data[0];
         let offset = RegisterOffset(io_port % 0x10);
-        tracing::trace!(CVM_CONFIDENTIAL, ?io_port, ?offset, ?data, "io port write");
+        tracing::trace!(?io_port, ?offset, ?data, "io port write");
 
         match offset {
             RegisterOffset::STATUS_A | RegisterOffset::STATUS_B => {
@@ -265,7 +264,7 @@ impl PortIoIntercept for StubFloppyDiskController {
                     return IoResult::Ok;
                 }
 
-                tracing::trace!(CVM_CONFIDENTIAL,
+                tracing::trace!(
                     ?data,
                     ?self.state.input_bytes,
                     "floppy command byte"
@@ -279,7 +278,7 @@ impl PortIoIntercept for StubFloppyDiskController {
                     return IoResult::Ok;
                 }
 
-                tracing::trace!(CVM_CONFIDENTIAL,
+                tracing::trace!(
                     ?command,
                     input_bytes = ?self.state.input_bytes,
                     "executing floppy command"

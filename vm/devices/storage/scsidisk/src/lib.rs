@@ -17,7 +17,6 @@ mod tests;
 
 pub use inquiry::INQUIRY_DATA_TEMPLATE;
 
-use cvm_tracing::CVM_CONFIDENTIAL;
 use disk_backend::Disk;
 use disk_backend::DiskError;
 use disk_backend::UnmapBehavior;
@@ -941,8 +940,8 @@ impl SimpleScsiDisk {
             match err {
                 ScsiError::UnsupportedModePageCode(..)
                 | ScsiError::UnsupportedServiceAction(_)
-                | ScsiError::UnsupportedVpdPageCode(_) => tracing::debug!(CVM_CONFIDENTIAL, disk = ?self.scsi_parameters.disk_id, error = err.as_error(), ?op, "scsi_error"),
-                | ScsiError::IllegalRequest(_) => tracing::debug!(CVM_CONFIDENTIAL, disk = ?self.scsi_parameters.disk_id, error = err.as_error(), ?op, "scsi_error"),
+                | ScsiError::UnsupportedVpdPageCode(_) => tracing::debug!(disk = ?self.scsi_parameters.disk_id, error = err.as_error(), ?op, "scsi_error"),
+                | ScsiError::IllegalRequest(_) => tracing::debug!(disk = ?self.scsi_parameters.disk_id, error = err.as_error(), ?op, "scsi_error"),
                 _ => tracelimit::warn_ratelimited!(disk = ?self.scsi_parameters.disk_id, error = err.as_error(), ?op, "scsi_error"),
             }
             err

@@ -23,7 +23,6 @@ use chipset_device::pio::ControlPortIoIntercept;
 use chipset_device::pio::PortIoIntercept;
 use chipset_device::pio::RegisterPortIoIntercept;
 use chipset_device::poll_device::PollDevice;
-use cvm_tracing::CVM_CONFIDENTIAL;
 use disk_backend::Disk;
 use drive::DiskDrive;
 use drive::DriveRegister;
@@ -941,24 +940,14 @@ impl PciConfigSpace for IdeDevice {
             }
         };
 
-        tracing::trace!(
-            CVM_CONFIDENTIAL,
-            ?offset,
-            value,
-            "ide pci config space read"
-        );
+        tracing::trace!(?offset, value, "ide pci config space read");
         IoResult::Ok
     }
 
     fn pci_cfg_write(&mut self, offset: u16, value: u32) -> IoResult {
         if offset < HEADER_TYPE_00_SIZE {
             let offset = HeaderType00(offset);
-            tracing::trace!(
-                CVM_CONFIDENTIAL,
-                ?offset,
-                value,
-                "ide pci config space write"
-            );
+            tracing::trace!(?offset, value, "ide pci config space write");
 
             const BUS_MASTER_IO_ENABLE_MASK: u32 = Command::new()
                 .with_pio_enabled(true)
@@ -1001,12 +990,7 @@ impl PciConfigSpace for IdeDevice {
             }
         } else {
             let offset = IdeConfigSpace(offset);
-            tracing::trace!(
-                CVM_CONFIDENTIAL,
-                ?offset,
-                value,
-                "ide pci config space write"
-            );
+            tracing::trace!(?offset, value, "ide pci config space write");
 
             match offset {
                 IdeConfigSpace::PRIMARY_TIMING_REG_ADDR => self.bus_master_state.timing_reg = value,
@@ -1242,13 +1226,7 @@ impl Channel {
             0x7f
         };
 
-        tracing::trace!(
-            CVM_CONFIDENTIAL,
-            ?port,
-            ?data,
-            channel = self.channel,
-            "io port read"
-        );
+        tracing::trace!(?port, ?data, channel = self.channel, "io port read");
         self.post_drive_access(bus_master_state);
         data
     }
@@ -1262,13 +1240,7 @@ impl Channel {
         data: u8,
         bus_master_state: &BusMasterState,
     ) {
-        tracing::trace!(
-            CVM_CONFIDENTIAL,
-            ?port,
-            ?data,
-            channel = self.channel,
-            "io port write"
-        );
+        tracing::trace!(?port, ?data, channel = self.channel, "io port write");
 
         match port {
             DriveRegister::DeviceHead => {
@@ -1376,12 +1348,7 @@ impl Channel {
             _ => return IoResult::Err(IoError::InvalidRegister),
         }
 
-        tracing::trace!(
-            CVM_CONFIDENTIAL,
-            ?bus_master_reg,
-            ?data,
-            "bus master register read"
-        );
+        tracing::trace!(?bus_master_reg, ?data, "bus master register read");
         IoResult::Ok
     }
 
@@ -1398,12 +1365,7 @@ impl Channel {
             _ => return IoResult::Err(IoError::InvalidAccessSize),
         };
 
-        tracing::trace!(
-            CVM_CONFIDENTIAL,
-            ?bus_master_reg,
-            value,
-            "bus master register write"
-        );
+        tracing::trace!(?bus_master_reg, value, "bus master register write");
 
         match bus_master_reg {
             BusMasterReg::COMMAND => {
@@ -1448,12 +1410,7 @@ impl Channel {
                     new_value.set_dma_error(false);
                 }
 
-                tracing::trace!(
-                    CVM_CONFIDENTIAL,
-                    ?old_value,
-                    ?new_value,
-                    "set bus master status"
-                );
+                tracing::trace!(?old_value, ?new_value, "set bus master status");
                 self.bus_master_state.status_reg = new_value;
             }
             BusMasterReg::TABLE_PTR => {

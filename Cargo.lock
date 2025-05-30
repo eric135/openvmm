@@ -1775,7 +1775,6 @@ dependencies = [
  "arrayvec",
  "bitfield-struct 0.10.1",
  "chipset_device",
- "cvm_tracing",
  "disk_backend",
  "guestmem",
  "inspect",
@@ -1795,7 +1794,6 @@ dependencies = [
  "arrayvec",
  "bitfield-struct 0.10.1",
  "chipset_device",
- "cvm_tracing",
  "inspect",
  "mesh",
  "open_enum",
@@ -3298,7 +3296,6 @@ version = "0.0.0"
 dependencies = [
  "bitfield-struct 0.10.1",
  "chipset_device",
- "cvm_tracing",
  "disk_backend",
  "disk_file",
  "guestmem",
@@ -6115,7 +6112,6 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "cvm_tracing",
  "disk_backend",
  "disk_prwrap",
  "futures",

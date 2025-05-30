@@ -7,7 +7,6 @@ use super::BlockDevice;
 use super::DeviceType;
 use bitfield_struct::bitfield;
 use blocking::unblock;
-use cvm_tracing::CVM_CONFIDENTIAL;
 use disk_backend::pr::ReservationReport;
 use nvme_common::from_nvme_reservation_report;
 use nvme_spec::nvm;
@@ -214,7 +213,7 @@ fn nvme_reservation_report(
                     nvm::RegisteredControllerExtended::read_from_prefix(&buffer[source..])
                         .unwrap()
                         .0; // TODO: zerocopy: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
-                tracing::debug!(CVM_CONFIDENTIAL, controller = ?controller, "nvme_reservation_report");
+                tracing::debug!(controller = ?controller, "nvme_reservation_report");
                 controllers.push(controller);
                 source += source_step;
             }
@@ -270,7 +269,7 @@ pub fn nvme_identify_namespace_data(
     )?;
 
     let data = nvm::IdentifyNamespace::read_from_prefix(buffer).unwrap().0; // TODO: zerocopy: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
-    tracing::trace!(CVM_CONFIDENTIAL, ?data, "nvme_identify_namespace_data");
+    tracing::trace!(?data, "nvme_identify_namespace_data");
     Ok(data)
 }
 
@@ -295,7 +294,7 @@ pub fn nvme_identify_controller_data(file: &fs::File) -> io::Result<nvme_spec::I
     let data = nvme_spec::IdentifyController::read_from_prefix(buffer)
         .unwrap()
         .0; // TODO: zerocopy: use-rest-of-range (https://github.com/microsoft/openvmm/issues/759)
-    tracing::trace!(CVM_CONFIDENTIAL, ?data, "nvme_identify_controller_data");
+    tracing::trace!(?data, "nvme_identify_controller_data");
     Ok(data)
 }
 
