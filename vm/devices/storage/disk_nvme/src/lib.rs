@@ -12,6 +12,7 @@ use disk_backend::DiskError;
 use disk_backend::DiskIo;
 use disk_backend::MediumErrorDetails;
 use disk_backend::pr;
+use futures::future::join_all;
 use inspect::Inspect;
 use nvme_common::from_nvme_reservation_report;
 use nvme_spec::Status;
@@ -78,26 +79,30 @@ impl DiskIo for NvmeDisk {
     ) -> Result<(), DiskError> {
         let block_count = buffers.len() as u64 >> self.block_shift;
         let mut block_offset = 0;
+        let mut futures = Vec::new();
         while block_offset < block_count {
             let this_block_count = (block_count - block_offset)
                 .min(self.namespace.max_transfer_block_count().into())
                 as u32;
 
-            self.namespace
-                .read(
-                    get_cpu_number(),
-                    sector + block_offset,
-                    this_block_count,
-                    buffers.guest_memory(),
-                    buffers.range().subrange(
-                        (block_offset as usize) << self.block_shift,
-                        (this_block_count as usize) << self.block_shift,
-                    ),
-                )
-                .await
-                .map_err(map_nvme_error)?;
+            let fut = self.namespace.read(
+                get_cpu_number(),
+                sector + block_offset,
+                this_block_count,
+                buffers.guest_memory(),
+                buffers.range().subrange(
+                    (block_offset as usize) << self.block_shift,
+                    (this_block_count as usize) << self.block_shift,
+                ),
+            );
+            futures.push(fut);
 
             block_offset += this_block_count as u64;
+        }
+
+        let results = join_all(futures).await;
+        for result in results {
+            result.map_err(map_nvme_error)?;
         }
         Ok(())
     }
@@ -110,27 +115,31 @@ impl DiskIo for NvmeDisk {
     ) -> Result<(), DiskError> {
         let block_count = buffers.len() as u64 >> self.block_shift;
         let mut block_offset = 0;
+        let mut futures = Vec::new();
         while block_offset < block_count {
             let this_block_count = (block_count - block_offset)
                 .min(self.namespace.max_transfer_block_count().into())
                 as u32;
 
-            self.namespace
-                .write(
-                    get_cpu_number(),
-                    sector + block_offset,
-                    this_block_count,
-                    fua,
-                    buffers.guest_memory(),
-                    buffers.range().subrange(
-                        (block_offset as usize) << self.block_shift,
-                        (this_block_count as usize) << self.block_shift,
-                    ),
-                )
-                .await
-                .map_err(map_nvme_error)?;
+            let fut = self.namespace.write(
+                get_cpu_number(),
+                sector + block_offset,
+                this_block_count,
+                fua,
+                buffers.guest_memory(),
+                buffers.range().subrange(
+                    (block_offset as usize) << self.block_shift,
+                    (this_block_count as usize) << self.block_shift,
+                ),
+            );
+            futures.push(fut);
 
             block_offset += this_block_count as u64;
+        }
+
+        let results = join_all(futures).await;
+        for result in results {
+            result.map_err(map_nvme_error)?;
         }
         Ok(())
     }
