@@ -1293,6 +1293,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "disk_backend",
+ "futures",
  "inspect",
  "nvme_common",
  "nvme_driver",
