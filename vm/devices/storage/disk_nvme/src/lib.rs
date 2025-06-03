@@ -96,12 +96,14 @@ impl DiskIo for NvmeDisk {
                 ),
             );
             futures.push(fut);
+            tracing::trace!(block_offset, sector, "started read_vectored future");
 
             block_offset += this_block_count as u64;
         }
 
         let results = join_all(futures).await;
-        for result in results {
+        for (join_count, result) in results.into_iter().enumerate() {
+            tracing::trace!(join_count, sector, "joined read_vectored future");
             result.map_err(map_nvme_error)?;
         }
         Ok(())
@@ -133,12 +135,14 @@ impl DiskIo for NvmeDisk {
                 ),
             );
             futures.push(fut);
+            tracing::trace!(block_offset, sector, "started write_vectored future");
 
             block_offset += this_block_count as u64;
         }
 
         let results = join_all(futures).await;
-        for result in results {
+        for (join_count, result) in results.into_iter().enumerate() {
+            tracing::trace!(join_count, sector, "joined write_vectored future");
             result.map_err(map_nvme_error)?;
         }
         Ok(())

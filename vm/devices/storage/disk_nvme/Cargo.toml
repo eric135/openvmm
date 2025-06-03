@@ -16,6 +16,7 @@ scsi_buffers.workspace = true
 futures.workspace = true
 inspect.workspace = true
 pal.workspace = true
+tracing.workspace = true
 
 async-trait.workspace = true
 
