@@ -226,6 +226,7 @@ impl Namespace {
         guest_memory: &GuestMemory,
         mem: PagedRange<'_>,
     ) -> Result<(), RequestError> {
+        tracing::trace!(lba, "read start");
         self.check_active()?;
         if block_count == 0 {
             return Ok(());
@@ -255,6 +256,7 @@ impl Namespace {
                 mem.subrange(0, len),
             )
             .await?;
+        tracing::trace!(lba, "read end");
         Ok(())
     }
 
@@ -268,6 +270,7 @@ impl Namespace {
         guest_memory: &GuestMemory,
         mem: PagedRange<'_>,
     ) -> Result<(), RequestError> {
+        tracing::trace!(lba, "write start");
         self.check_active()?;
         if block_count == 0 {
             return Ok(());
@@ -298,6 +301,7 @@ impl Namespace {
                 mem.subrange(0, len),
             )
             .await?;
+        tracing::trace!(lba, "write end");
         Ok(())
     }
 
