@@ -50,6 +50,9 @@ use crate::reference_time::ReferenceTime;
 use crate::servicing;
 use crate::servicing::ServicingState;
 use crate::servicing::transposed::OptionServicingInitState;
+use crate::storvsc_manager::StorvscDiskConfig;
+use crate::storvsc_manager::StorvscDiskResolver;
+use crate::storvsc_manager::StorvscManager;
 use crate::threadpool_vm_task_backend::ThreadpoolBackend;
 use crate::vmbus_relay_unit::VmbusRelayHandle;
 use crate::vmgs_logger::GetVmgsLogger;
@@ -284,6 +287,8 @@ pub struct UnderhillEnvCfg {
     pub test_configuration: Option<TestScenarioConfig>,
     /// Disable the UEFI front page.
     pub disable_uefi_frontpage: bool,
+    /// Use the user-mode storvsc driver.
+    pub storvsc_usermode: bool,
 }
 
 /// Bundle of config + runtime objects for hooking into the underhill remote
@@ -1880,6 +1885,24 @@ async fn new_underhill_vm(
         None
     };
 
+    let storvsc_manager = if env_cfg.storvsc_usermode {
+        let save_restore_supported = true; // TODO
+
+        let manager = StorvscManager::new(
+            &driver_source,
+            save_restore_supported,
+            servicing_state.storvsc_state.unwrap_or(None),
+        );
+
+        resolver.add_async_resolver::<DiskHandleKind, _, StorvscDiskConfig, _>(
+            StorvscDiskResolver::new(manager.client().clone()),
+        );
+
+        Some(manager)
+    } else {
+        None
+    };
+
     let initial_generation_id = match dps.general.generation_id.map(u128::from_ne_bytes) {
         Some(0) | None => {
             let mut gen_id = [0; 16];
@@ -3007,6 +3030,7 @@ async fn new_underhill_vm(
         uevent_listener,
         resolver,
         nvme_manager,
+        storvsc_manager,
         emuplat_servicing: EmuplatServicing {
             get_backed_adjust_gpa_range: emuplat_adjust_gpa_range,
             rtc_local_clock: rtc_time_source.0,
