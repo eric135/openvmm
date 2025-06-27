@@ -14,6 +14,7 @@ use disk_backend::resolve::ResolvedDisk;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use futures::future::join_all;
+use guid::Guid;
 use inspect::Inspect;
 use mesh::MeshPayload;
 use mesh::rpc::Rpc;
@@ -101,6 +102,7 @@ impl NvmeManager {
         let mut worker = NvmeManagerWorker {
             driver_source: driver_source.clone(),
             devices: HashMap::new(),
+            controller_instance_ids: HashMap::new(),
             vp_count,
             save_restore_supported,
             is_isolated,
@@ -175,7 +177,7 @@ impl NvmeManager {
 enum Request {
     Inspect(inspect::Deferred),
     ForceLoadDriver(inspect::DeferredUpdate),
-    GetNamespace(Rpc<(String, u32), Result<nvme_driver::Namespace, NamespaceError>>),
+    GetNamespace(Rpc<(Guid, String, u32), Result<nvme_driver::Namespace, NamespaceError>>),
     Save(Rpc<(), Result<NvmeManagerSavedState, anyhow::Error>>),
     Shutdown {
         span: tracing::Span,
@@ -191,13 +193,22 @@ pub struct NvmeManagerClient {
 impl NvmeManagerClient {
     pub async fn get_namespace(
         &self,
+        controller_instance_id: Guid,
         pci_id: String,
         nsid: u32,
     ) -> anyhow::Result<nvme_driver::Namespace> {
         Ok(self
             .sender
-            .call(Request::GetNamespace, (pci_id.clone(), nsid))
-            .instrument(tracing::info_span!("nvme_get_namespace", pci_id, nsid))
+            .call(
+                Request::GetNamespace,
+                (controller_instance_id, pci_id.clone(), nsid),
+            )
+            .instrument(tracing::info_span!(
+                "nvme_get_namespace",
+                controller_instance_id = controller_instance_id.to_string(),
+                pci_id,
+                nsid
+            ))
             .await
             .context("nvme manager is shut down")??)
     }
@@ -217,6 +228,8 @@ struct NvmeManagerWorker {
     driver_source: VmTaskDriverSource,
     #[inspect(iter_by_key)]
     devices: HashMap<String, nvme_driver::NvmeDriver<VfioDevice>>,
+    #[inspect(iter_by_key)]
+    controller_instance_ids: HashMap<String, Guid>,
     vp_count: u32,
     /// Running environment (memory layout) allows save/restore.
     save_restore_supported: bool,
@@ -235,7 +248,7 @@ impl NvmeManagerWorker {
             match req {
                 Request::Inspect(deferred) => deferred.inspect(&self),
                 Request::ForceLoadDriver(update) => {
-                    match self.get_driver(update.new_value().to_owned()).await {
+                    match self.get_driver(None, update.new_value().to_owned()).await {
                         Ok(_) => {
                             let pci_id = update.new_value().to_string();
                             update.succeed(pci_id);
@@ -246,8 +259,8 @@ impl NvmeManagerWorker {
                     }
                 }
                 Request::GetNamespace(rpc) => {
-                    rpc.handle(async |(pci_id, nsid)| {
-                        self.get_namespace(pci_id.clone(), nsid)
+                    rpc.handle(async |(controller_instance_id, pci_id, nsid)| {
+                        self.get_namespace(controller_instance_id, pci_id.clone(), nsid)
                             .map_err(|source| NamespaceError { pci_id, source })
                             .await
                     })
@@ -283,9 +296,15 @@ impl NvmeManagerWorker {
         if !nvme_keepalive || !self.save_restore_supported {
             async {
                 join_all(self.devices.drain().map(|(pci_id, driver)| {
-                    driver
-                        .shutdown()
-                        .instrument(tracing::info_span!("shutdown_nvme_driver", pci_id))
+                    driver.shutdown().instrument(tracing::info_span!(
+                        "shutdown_nvme_driver",
+                        pci_id,
+                        controller_instance_id = self
+                            .controller_instance_ids
+                            .remove(&pci_id)
+                            .unwrap_or_default()
+                            .to_string()
+                    ))
                 }))
                 .await
             }
@@ -296,6 +315,7 @@ impl NvmeManagerWorker {
 
     async fn get_driver(
         &mut self,
+        controller_instance_id: Option<Guid>,
         pci_id: String,
     ) -> Result<&mut nvme_driver::NvmeDriver<VfioDevice>, InnerError> {
         let driver = match self.devices.entry(pci_id.to_owned()) {
@@ -314,6 +334,12 @@ impl NvmeManagerWorker {
                         persistent_allocations: self.save_restore_supported,
                     })
                     .map_err(InnerError::DmaClient)?;
+
+                // Update controller instance ID map for this PCI ID (if specified)
+                if let Some(controller_instance_id) = controller_instance_id {
+                    self.controller_instance_ids
+                        .insert(entry.key().clone(), controller_instance_id);
+                }
 
                 let device = VfioDevice::new(&self.driver_source, entry.key(), dma_client)
                     .instrument(tracing::info_span!("vfio_device_open", pci_id))
@@ -344,10 +370,13 @@ impl NvmeManagerWorker {
 
     async fn get_namespace(
         &mut self,
+        controller_instance_id: Guid,
         pci_id: String,
         nsid: u32,
     ) -> Result<nvme_driver::Namespace, InnerError> {
-        let driver = self.get_driver(pci_id.to_owned()).await?;
+        let driver = self
+            .get_driver(Some(controller_instance_id), pci_id.to_owned())
+            .await?;
         driver
             .namespace(nsid)
             .await
@@ -440,7 +469,7 @@ impl AsyncResolveResource<DiskHandleKind, NvmeDiskConfig> for NvmeDiskResolver {
     ) -> Result<Self::Output, Self::Error> {
         let namespace = self
             .manager
-            .get_namespace(rsrc.pci_id, rsrc.nsid)
+            .get_namespace(rsrc.controller_instance_id, rsrc.pci_id, rsrc.nsid)
             .await
             .context("could not open nvme namespace")?;
 
@@ -450,6 +479,7 @@ impl AsyncResolveResource<DiskHandleKind, NvmeDiskConfig> for NvmeDiskResolver {
 
 #[derive(MeshPayload, Default)]
 pub struct NvmeDiskConfig {
+    pub controller_instance_id: Guid,
     pub pci_id: String,
     pub nsid: u32,
 }
