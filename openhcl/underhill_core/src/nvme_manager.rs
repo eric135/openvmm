@@ -14,7 +14,6 @@ use disk_backend::resolve::ResolvedDisk;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use futures::future::join_all;
-use guid::Guid;
 use inspect::Inspect;
 use mesh::MeshPayload;
 use mesh::rpc::Rpc;
@@ -102,7 +101,6 @@ impl NvmeManager {
         let mut worker = NvmeManagerWorker {
             driver_source: driver_source.clone(),
             devices: HashMap::new(),
-            controller_instance_ids: HashMap::new(),
             vp_count,
             save_restore_supported,
             is_isolated,
@@ -177,7 +175,7 @@ impl NvmeManager {
 enum Request {
     Inspect(inspect::Deferred),
     ForceLoadDriver(inspect::DeferredUpdate),
-    GetNamespace(Rpc<(Guid, String, u32), Result<nvme_driver::Namespace, NamespaceError>>),
+    GetNamespace(Rpc<(String, String, u32), Result<nvme_driver::Namespace, NamespaceError>>),
     Save(Rpc<(), Result<NvmeManagerSavedState, anyhow::Error>>),
     Shutdown {
         span: tracing::Span,
@@ -193,7 +191,7 @@ pub struct NvmeManagerClient {
 impl NvmeManagerClient {
     pub async fn get_namespace(
         &self,
-        controller_instance_id: Guid,
+        controller_instance_id: String,
         pci_id: String,
         nsid: u32,
     ) -> anyhow::Result<nvme_driver::Namespace> {
@@ -201,11 +199,11 @@ impl NvmeManagerClient {
             .sender
             .call(
                 Request::GetNamespace,
-                (controller_instance_id, pci_id.clone(), nsid),
+                (controller_instance_id.clone(), pci_id.clone(), nsid),
             )
             .instrument(tracing::info_span!(
                 "nvme_get_namespace",
-                controller_instance_id = controller_instance_id.to_string(),
+                controller_instance_id,
                 pci_id,
                 nsid
             ))
@@ -228,8 +226,6 @@ struct NvmeManagerWorker {
     driver_source: VmTaskDriverSource,
     #[inspect(iter_by_key)]
     devices: HashMap<String, nvme_driver::NvmeDriver<VfioDevice>>,
-    #[inspect(iter_by_key)]
-    controller_instance_ids: HashMap<String, Guid>,
     vp_count: u32,
     /// Running environment (memory layout) allows save/restore.
     save_restore_supported: bool,
@@ -296,14 +292,11 @@ impl NvmeManagerWorker {
         if !nvme_keepalive || !self.save_restore_supported {
             async {
                 join_all(self.devices.drain().map(|(pci_id, driver)| {
+                    let controller_instance_id = driver.controller_instance_id();
                     driver.shutdown().instrument(tracing::info_span!(
                         "shutdown_nvme_driver",
                         pci_id,
-                        controller_instance_id = self
-                            .controller_instance_ids
-                            .remove(&pci_id)
-                            .unwrap_or_default()
-                            .to_string()
+                        controller_instance_id
                     ))
                 }))
                 .await
@@ -315,7 +308,7 @@ impl NvmeManagerWorker {
 
     async fn get_driver(
         &mut self,
-        controller_instance_id: Option<Guid>,
+        controller_instance_id: Option<String>,
         pci_id: String,
     ) -> Result<&mut nvme_driver::NvmeDriver<VfioDevice>, InnerError> {
         let driver = match self.devices.entry(pci_id.to_owned()) {
@@ -335,12 +328,6 @@ impl NvmeManagerWorker {
                     })
                     .map_err(InnerError::DmaClient)?;
 
-                // Update controller instance ID map for this PCI ID (if specified)
-                if let Some(controller_instance_id) = controller_instance_id {
-                    self.controller_instance_ids
-                        .insert(entry.key().clone(), controller_instance_id);
-                }
-
                 let device = VfioDevice::new(&self.driver_source, entry.key(), dma_client)
                     .instrument(tracing::info_span!("vfio_device_open", pci_id))
                     .await
@@ -349,7 +336,7 @@ impl NvmeManagerWorker {
                 // TODO: For now, any isolation means use bounce buffering. This
                 // needs to change when we have nvme devices that support DMA to
                 // confidential memory.
-                let driver = nvme_driver::NvmeDriver::new(
+                let mut driver = nvme_driver::NvmeDriver::new(
                     &self.driver_source,
                     self.vp_count,
                     device,
@@ -362,6 +349,11 @@ impl NvmeManagerWorker {
                 .await
                 .map_err(InnerError::DeviceInitFailed)?;
 
+                // Pass through controller instance ID if specified.
+                if let Some(controller_instance_id) = controller_instance_id {
+                    driver.set_controller_instance_id(controller_instance_id);
+                }
+
                 entry.insert(driver)
             }
         };
@@ -370,7 +362,7 @@ impl NvmeManagerWorker {
 
     async fn get_namespace(
         &mut self,
-        controller_instance_id: Guid,
+        controller_instance_id: String,
         pci_id: String,
         nsid: u32,
     ) -> Result<nvme_driver::Namespace, InnerError> {
@@ -479,7 +471,7 @@ impl AsyncResolveResource<DiskHandleKind, NvmeDiskConfig> for NvmeDiskResolver {
 
 #[derive(MeshPayload, Default)]
 pub struct NvmeDiskConfig {
-    pub controller_instance_id: Guid,
+    pub controller_instance_id: String,
     pub pci_id: String,
     pub nsid: u32,
 }
