@@ -336,11 +336,12 @@ impl NvmeManagerWorker {
                 // TODO: For now, any isolation means use bounce buffering. This
                 // needs to change when we have nvme devices that support DMA to
                 // confidential memory.
-                let mut driver = nvme_driver::NvmeDriver::new(
+                let driver = nvme_driver::NvmeDriver::new(
                     &self.driver_source,
                     self.vp_count,
                     device,
                     self.is_isolated,
+                    controller_instance_id,
                 )
                 .instrument(tracing::info_span!(
                     "nvme_driver_init",
@@ -348,11 +349,6 @@ impl NvmeManagerWorker {
                 ))
                 .await
                 .map_err(InnerError::DeviceInitFailed)?;
-
-                // Pass through controller instance ID if specified.
-                if let Some(controller_instance_id) = controller_instance_id {
-                    driver.set_controller_instance_id(controller_instance_id);
-                }
 
                 entry.insert(driver)
             }

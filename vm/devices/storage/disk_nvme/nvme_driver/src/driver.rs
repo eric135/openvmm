@@ -180,11 +180,18 @@ impl<T: DeviceBacking> NvmeDriver<T> {
         cpu_count: u32,
         device: T,
         bounce_buffer: bool,
+        controller_instance_id: Option<String>,
     ) -> anyhow::Result<Self> {
         let pci_id = device.id().to_owned();
-        let mut this = Self::new_disabled(driver_source, cpu_count, device, bounce_buffer)
-            .instrument(tracing::info_span!("nvme_new_disabled", pci_id))
-            .await?;
+        let mut this = Self::new_disabled(
+            driver_source,
+            cpu_count,
+            device,
+            bounce_buffer,
+            controller_instance_id,
+        )
+        .instrument(tracing::info_span!("nvme_new_disabled", pci_id))
+        .await?;
         match this
             .enable(cpu_count as u16)
             .instrument(tracing::info_span!("nvme_enable", pci_id))
@@ -209,6 +216,7 @@ impl<T: DeviceBacking> NvmeDriver<T> {
         cpu_count: u32,
         mut device: T,
         bounce_buffer: bool,
+        controller_instance_id: Option<String>,
     ) -> anyhow::Result<Self> {
         let driver = driver_source.simple();
         let bar0 = Bar0(
@@ -249,7 +257,7 @@ impl<T: DeviceBacking> NvmeDriver<T> {
 
         Ok(Self {
             device_id: device.id().to_owned(),
-            controller_instance_id: None,
+            controller_instance_id,
             task: Some(TaskControl::new(DriverWorkerTask {
                 device,
                 driver: driver.clone(),
@@ -747,11 +755,6 @@ impl<T: DeviceBacking> NvmeDriver<T> {
     /// Get the controller instance ID, if set.
     pub fn controller_instance_id(&self) -> Option<String> {
         self.controller_instance_id.clone()
-    }
-
-    /// Set the controller instance ID.
-    pub fn set_controller_instance_id(&mut self, controller_instance_id: String) {
-        self.controller_instance_id = Some(controller_instance_id);
     }
 }
 
